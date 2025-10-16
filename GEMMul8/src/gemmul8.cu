@@ -39,7 +39,11 @@ size_t workSize(const size_t m,            // Number of rows of C
     size_t total_size = 0;
     total_size += sizeof(int8_t) * (sizeA + sizeB) * num_moduli;
     total_size += sizeof(uint8_t) * sizeC * num_moduli;
+#if defined(BATCHED)
+    total_size += sizeof(int32_t) * sizeC * num_moduli;
+#else
     total_size += sizeof(int32_t) * sizeC;
+#endif
     total_size += sizeof(int16_t) * (size_vecA + size_vecB);
 
     return total_size;
@@ -134,12 +138,17 @@ std::vector<double> gemm<double>(cublasHandle_t handle,        // Handle to the 
     //------------------------------
     // set workspace (16byte align)
     //------------------------------
-    int8_t *A8i   = reinterpret_cast<int8_t *>(work);                      // lda8i*m*sizeod(int8_t)*num_moduli
-    int8_t *B8i   = A8i + sizeA * num_moduli;                              // ldb8i*n*sizeod(int8_t)*num_moduli
-    uint8_t *C8u  = reinterpret_cast<uint8_t *>(B8i + sizeB * num_moduli); // (m*n+15)/16*16*sizeof(uint8_t)*num_moduli
-    int32_t *C32i = reinterpret_cast<int32_t *>(C8u + sizeC * num_moduli); // (m*n+15)/16*16*sizeof(int32_t)
-    int16_t *sftA = reinterpret_cast<int16_t *>(C32i + sizeC);             // (m+15)/16*16*sizeof(int16_t)
-    int16_t *sftB = sftA + size_vecA;                                      // (n+15)/16*16*sizeof(int16_t)
+    int8_t *A8i   = reinterpret_cast<int8_t *>(work);                       // lda8i*m*sizeod(int8_t)*num_moduli
+    int8_t *B8i   = A8i + sizeA * num_moduli;                               // ldb8i*n*sizeod(int8_t)*num_moduli
+    uint8_t *C8u  = reinterpret_cast<uint8_t *>(B8i + sizeB * num_moduli);  // (m*n+15)/16*16*sizeof(uint8_t)*num_moduli
+    int32_t *C32i = reinterpret_cast<int32_t *>(C8u + sizeC * num_moduli);  // (m*n+15)/16*16*sizeof(int32_t)
+    int16_t *sftA
+#if defined(BATCHED)
+                  = reinterpret_cast<int16_t *>(C32i + sizeC * num_moduli); // (m+15)/16*16*sizeof(int16_t)
+#else
+                  = reinterpret_cast<int16_t *>(C32i + sizeC);              // (m+15)/16*16*sizeof(int16_t)
+#endif
+    int16_t *sftB = sftA + size_vecA;                                       // (n+15)/16*16*sizeof(int16_t)
 
     if (is_numM_1) {
         cudaMemcpyToSymbol(oz2_table::NMi_dev, &oz2_table::NMi_1[table_idx][0], num_moduli * sizeof(double));
@@ -147,6 +156,9 @@ std::vector<double> gemm<double>(cublasHandle_t handle,        // Handle to the 
         cudaMemcpyToSymbol(oz2_table::NMi_dev, &oz2_table::NMi_2[num_moduli - 8][0][0], 2 * num_moduli * sizeof(double));
     }
     cudaMemcpyToSymbol(oz2_table::moduli_dev, oz2_table::moduli, num_moduli * sizeof(oz2_table::tab_t<double>));
+#if defined(BATCHED)
+    cudaMemcpyToSymbol(oz2_table::invm_32i_dev, oz2_table::invm_32i, (num_moduli - 1) * sizeof(int32_t));
+#endif
 
     //------------------------------
     // Scaling
@@ -164,6 +176,15 @@ std::vector<double> gemm<double>(cublasHandle_t handle,        // Handle to the 
     }
     timing_stop(timetmp, timer[0]);
 
+#if defined(BATCHED)
+    timing_start(timetmp);
+    cublasGemmStridedBatchedEx(handle, CUBLAS_OP_T, CUBLAS_OP_N, m_pad, n, ldb8i, &one, A8i, CUDA_R_8I, ldb8i, sizeA, B8i, CUDA_R_8I, ldb8i, sizeB, &zero, C32i, CUDA_R_32I, m_pad, sizeC, num_moduli, CUBLAS_COMPUTE_32I, CUBLAS_GEMM_DEFAULT);
+    timing_stop(timetmp, timer[1]);
+
+    timing_start(timetmp);
+    oz2_util::conv_32i_2_8u_batched(num_moduli, sizeC, C32i, C8u);
+    timing_stop(timetmp, timer[2]);
+#else
     for (unsigned i = 0; i < num_moduli; ++i) {
         //-----------------------------
         // Error-free matrix multiplication
@@ -181,6 +202,7 @@ std::vector<double> gemm<double>(cublasHandle_t handle,        // Handle to the 
         oz2_util::conv_32i_2_8u(i, sizeC, C32i, C8u + i * sizeC);
         timing_stop(timetmp, timer[2]);
     }
+#endif
 
     //------------------------------
     // Accumulation and Inverse scaling

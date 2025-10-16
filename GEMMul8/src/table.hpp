@@ -23,6 +23,7 @@ template <> struct tab_t<float> {
 __constant__ tab_t<double> moduli_dev[20];
 __constant__ tab_t<float> modulif_dev[20];
 __constant__ double NMi_dev[40];
+__constant__ int32_t invm_32i_dev[19];
 
 // -moduli & 1/moduli
 constexpr tab_t<double> moduli[20] = {

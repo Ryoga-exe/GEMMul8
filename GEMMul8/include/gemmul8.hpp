@@ -2,6 +2,8 @@
 #include "../src/cuda_impl.hpp"
 #include <vector>
 
+#define BATCHED
+
 namespace gemmul8 {
 
 // workSize returns work size required in gemm
