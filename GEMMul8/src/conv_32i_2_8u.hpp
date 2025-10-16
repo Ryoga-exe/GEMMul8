@@ -43,7 +43,9 @@ __global__ void conv_32i_2_8u_not256_kernel(const size_t sizeC,                 
                                             uint8_t *const __restrict__ C8u)        // output
 {
     const auto idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (idx >= sizeC) return; int4 in = reinterpret_cast<const int4 *>(C32i)[idx];
+    if (idx >= sizeC) return;
+    
+    int4 in = reinterpret_cast<const int4 *>(C32i)[idx];
 
     uchar4 out;
     out.x = mod_reduce(in.x, invm, modulus);
@@ -73,10 +75,10 @@ __global__ void conv_32i_2_8u_batched_kernel(const size_t sizeC,
                                              const int32_t *const __restrict__ C32i_all, // input
                                              uint8_t *const __restrict__ C8u_all)        // output
 {
-    const auto mod blockIdx.y; // modulus index
+    const auto mod = blockIdx.y; // modulus index
     const auto idx = blockIdx.x * blockDim.x + threadIdx.x;
     const size_t sizeC4 = sizeC >> 2;
-    if (idx >= sizeC) return;
+    if (idx >= sizeC4) return;
 
     const int32_t* C32i = C32i_all + static_cast<size_t>(mod) * sizeC;
     uint8_t*       C8u  = C8u_all  + static_cast<size_t>(mod) * sizeC;
@@ -98,7 +100,7 @@ __global__ void conv_32i_2_8u_batched_kernel(const size_t sizeC,
         out.w = mod_reduce(in.w, invm, modulus);
     }
 
-    reinterpret_cast<uchar4>(C8u)[idx] = out;
+    reinterpret_cast<uchar4*>(C8u)[idx] = out;
 }
 
 __inline__ void conv_32i_2_8u_batched(const unsigned num_moduli,

@@ -144,7 +144,7 @@ std::vector<double> gemm<double>(cublasHandle_t handle,        // Handle to the 
     int32_t *C32i = reinterpret_cast<int32_t *>(C8u + sizeC * num_moduli);  // (m*n+15)/16*16*sizeof(int32_t)
     int16_t *sftA
 #if defined(BATCHED)
-                  = reinterpret_cast<int16_t *>(C32i + sizeC * num_moduli); // (m+15)/16*16*sizeof(int16_t)
+                  = reinterpret_cast<int16_t *>(C32i + sizeC * num_moduli); // (m+15)/16*16*sizeof(int16_t)*num_moduli
 #else
                   = reinterpret_cast<int16_t *>(C32i + sizeC);              // (m+15)/16*16*sizeof(int16_t)
 #endif
